@@ -1,13 +1,15 @@
 package com.microservice.customer;
 
+import com.microservice.amqp.RabbitMQMessageProducer;
 import com.microservice.clients.fraud.FraudCheckResponse;
 import com.microservice.clients.fraud.FraudClient;
-import com.microservice.clients.notification.NotificationClient;
 import com.microservice.clients.notification.NotificationRequest;
 import org.springframework.stereotype.Service;
 
 @Service
-public record CustomerService(CustomerRepository customerRepository, FraudClient fraudClient, NotificationClient notificationClient) {
+public record CustomerService(CustomerRepository customerRepository,
+                              FraudClient fraudClient,
+                              RabbitMQMessageProducer producer) {
     public void registerCustomer(CustomerRegistrationRequest request) {
         Customer customer = Customer.builder()
                 .firstName(request.firstName())
@@ -25,14 +27,18 @@ public record CustomerService(CustomerRepository customerRepository, FraudClient
             throw new IllegalStateException("fraudster");
         }
 
-        // todo: make it async. i.e add it to queue
-        notificationClient.createNotification(
+
+        NotificationRequest notificationRequest =
                 new NotificationRequest(customer.getId(),
                         customer.getEmail(),
-                        "notification message"));
+                        "notification message");
+
+        producer.publish(
+                notificationRequest,
+                "internal.exchange",
+                "internal.notification.routing-key"
+        );
 
         customerRepository.save(customer);
-
-
     }
 }
